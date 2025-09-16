@@ -2,12 +2,16 @@ use clap::Parser;
 use serde_dispatch::serde_dispatch;
 use std::error::Error;
 use std::io::Write;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::linux::net::SocketAddrExt;
+use std::os::unix::net::{SocketAddr, UnixListener, UnixStream};
 use std::sync::{Arc, Mutex};
 use time::{Duration, OffsetDateTime};
 
-const SOCKET_PATH_COMMANDS: &str = "/tmp/waybar_timer_commands.sock";
-const SOCKET_PATH_UPDATES: &str = "/tmp/waybar_timer_updates.sock";
+/// The name of the "updates" socket in the abstract namespace.
+const SOCKET_NAME_UPDATES: &[u8] = b"waybar_timer_updates";
+/// The name of the "commands" socket in the abstract namespace.
+const SOCKET_NAME_COMMANDS: &[u8] = b"waybar_timer_commands";
+/// The interval in which updates are pulled.
 const INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn send_notification(summary: String) {
@@ -237,11 +241,9 @@ fn run_serve() {
     // spawn a thread which is responsible for accepting new subscribers
     let state_thread_subaccept = state.clone();
     std::thread::spawn(move || {
-        // NOTE: binding is not possible if the file already exists, that's why we delete it first
-        // this leads to undefined behavior when there is already a tail process running
-        // maybe would be better to instead remove the file when program exits
-        let _ = std::fs::remove_file(SOCKET_PATH_UPDATES);
-        let listener = UnixListener::bind(SOCKET_PATH_UPDATES).unwrap();
+        let listener =
+            UnixListener::bind_addr(&SocketAddr::from_abstract_name(SOCKET_NAME_UPDATES).unwrap())
+                .expect("couldn't connect to the \"update\" socket");
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -260,11 +262,9 @@ fn run_serve() {
     });
 
     // the main thread handles requests from the CLI
-    // NOTE: binding is not possible if the file already exists, that's why we delete it first
-    // this leads to undefined behavior when there is already a tail process running
-    // maybe would be better to instead remove the file when program exits
-    let _ = std::fs::remove_file(SOCKET_PATH_COMMANDS);
-    let listener = UnixListener::bind(SOCKET_PATH_COMMANDS).unwrap();
+    let listener =
+        UnixListener::bind_addr(&SocketAddr::from_abstract_name(SOCKET_NAME_COMMANDS).unwrap())
+            .expect("couldn't connect to the \"commands\" socket");
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
@@ -282,6 +282,8 @@ fn run_serve() {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let socket_addr_updates = SocketAddr::from_abstract_name(SOCKET_NAME_UPDATES).unwrap();
+    let socket_addr_commands = SocketAddr::from_abstract_name(SOCKET_NAME_COMMANDS).unwrap();
     let args = Args::parse();
     match args {
         Args::Serve => {
@@ -289,39 +291,39 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         Args::Hook => {
-            let mut stream = UnixStream::connect(SOCKET_PATH_UPDATES)?;
+            let mut stream = UnixStream::connect_addr(&socket_addr_updates)?;
             stream.shutdown(std::net::Shutdown::Write)?;
             let mut stdout = std::io::stdout();
             std::io::copy(&mut stream, &mut stdout)?;
             Ok(())
         }
         Args::New { minutes, command } => {
-            let stream = UnixStream::connect(SOCKET_PATH_COMMANDS)?;
+            let stream = UnixStream::connect_addr(&socket_addr_commands)?;
             WorldRPCClient::call_with(&stream, &stream).start(&minutes, &command)??;
             stream.shutdown(std::net::Shutdown::Both)?;
             Ok(())
         }
         Args::Increase { seconds } => {
-            let stream = UnixStream::connect(SOCKET_PATH_COMMANDS)?;
+            let stream = UnixStream::connect_addr(&socket_addr_commands)?;
             WorldRPCClient::call_with(&stream, &stream).increase(&seconds.into())??;
             stream.shutdown(std::net::Shutdown::Both)?;
             Ok(())
         }
         Args::Decrease { seconds } => {
             let seconds: i64 = seconds.into();
-            let stream = UnixStream::connect(SOCKET_PATH_COMMANDS)?;
+            let stream = UnixStream::connect_addr(&socket_addr_commands)?;
             WorldRPCClient::call_with(&stream, &stream).increase(&-seconds)??;
             stream.shutdown(std::net::Shutdown::Both)?;
             Ok(())
         }
         Args::Togglepause => {
-            let stream = UnixStream::connect(SOCKET_PATH_COMMANDS)?;
+            let stream = UnixStream::connect_addr(&socket_addr_commands)?;
             WorldRPCClient::call_with(&stream, &stream).togglepause()??;
             stream.shutdown(std::net::Shutdown::Both)?;
             Ok(())
         }
         Args::Cancel => {
-            let stream = UnixStream::connect(SOCKET_PATH_COMMANDS)?;
+            let stream = UnixStream::connect_addr(&socket_addr_commands)?;
             WorldRPCClient::call_with(&stream, &stream).cancel()??;
             stream.shutdown(std::net::Shutdown::Both)?;
             Ok(())
