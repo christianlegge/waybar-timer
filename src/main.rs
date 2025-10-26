@@ -97,7 +97,12 @@ impl Timer {
 
         // print new output to stdout (for waybar)
         let (text, alt, tooltip, css_class) = match self.kind {
-            TimerKind::Idle { .. } => (0, "standby", "No timer set".into(), "idle"),
+            TimerKind::Idle { .. } => (
+                0,
+                "standby",
+                format!("Pomodoro cycles: {0}", self.cycles),
+                "idle",
+            ),
             TimerKind::Running { expiry, .. } => {
                 let time_left = expiry - now;
                 let minutes_left = time_left.whole_minutes() + 1;
@@ -115,7 +120,7 @@ impl Timer {
     }
 
     fn tooltip(expiry: &OffsetDateTime) -> String {
-        let format_desc = time::macros::format_description!("[hour]:[minute]");
+        let format_desc = time::macros::format_description!("[hour repr:12]:[minute] [period]");
         let expiry_str = expiry.format(&format_desc).unwrap();
         format!("Timer expires at {expiry_str}")
     }
