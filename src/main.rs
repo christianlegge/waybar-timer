@@ -41,7 +41,7 @@ impl Error for WorldError {}
 #[serde_dispatch]
 trait World {
     fn cancel(&mut self) -> Result<(), WorldError>;
-    fn start(&mut self, minutes: u32, command: Option<String>) -> Result<(), WorldError>;
+    fn start(&mut self, command: Option<String>) -> Result<(), WorldError>;
     fn increase(&mut self, seconds: i64) -> Result<(), WorldError>;
     fn togglepause(&mut self) -> Result<(), WorldError>;
 }
@@ -123,7 +123,11 @@ impl World for Timer {
         Ok(())
     }
 
-    fn start(&mut self, minutes: u32, command: Option<String>) -> Result<(), WorldError> {
+    fn start(&mut self, command: Option<String>) -> Result<(), WorldError> {
+        let minutes = match self.cycles % 8 {
+            1 | 3 | 5 => 5,
+            _ => 25,
+        };
         match self.kind {
             TimerKind::Idle => {
                 let expiry = OffsetDateTime::now_local().unwrap()
@@ -196,10 +200,7 @@ enum Args {
     /// Keep reading the latest status of the timer (should be called by waybar)
     Hook,
     /// Start a new timer
-    New {
-        minutes: u32,
-        command: Option<String>,
-    },
+    New { command: Option<String> },
     /// Increase the current timer
     Increase { seconds: u32 },
     /// Decrease the current timer
@@ -317,9 +318,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             std::io::copy(&mut stream, &mut stdout)?;
             Ok(())
         }
-        Args::New { minutes, command } => {
+        Args::New { command } => {
             let stream = UnixStream::connect_addr(&socket_addr_commands)?;
-            WorldRPCClient::call_with(&stream, &stream).start(&minutes, &command)??;
+            WorldRPCClient::call_with(&stream, &stream).start(&command)??;
             stream.shutdown(std::net::Shutdown::Both)?;
             Ok(())
         }
