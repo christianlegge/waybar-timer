@@ -47,7 +47,13 @@ trait World {
 }
 
 #[derive(Debug)]
-enum Timer {
+struct Timer {
+    cycles: i32,
+    kind: TimerKind,
+}
+
+#[derive(Debug)]
+enum TimerKind {
     Idle,
     Running {
         expiry: OffsetDateTime,
@@ -65,7 +71,7 @@ impl Timer {
         let now = OffsetDateTime::now_local().unwrap();
 
         // check if timer expired
-        if let Self::Running { expiry, command } = self {
+        if let TimerKind::Running { expiry, command } = &self.kind {
             let time_left = *expiry - now;
             if time_left <= Duration::ZERO {
                 // timer has expired, send notification and set timer to idle
@@ -75,20 +81,23 @@ impl Timer {
                         .arg(command)
                         .output();
                 }
-                *self = Timer::Idle;
+                *self = Timer {
+                    kind: TimerKind::Idle,
+                    cycles: self.cycles + 1,
+                };
             }
         }
 
         // print new output to stdout (for waybar)
-        let (text, alt, tooltip) = match self {
-            Self::Idle => (0, "standby", "No timer set".into()),
-            Self::Running { expiry, .. } => {
-                let time_left = *expiry - now;
+        let (text, alt, tooltip) = match self.kind {
+            TimerKind::Idle { .. } => (0, "standby", "No timer set".into()),
+            TimerKind::Running { expiry, .. } => {
+                let time_left = expiry - now;
                 let minutes_left = time_left.whole_minutes() + 1;
-                let tooltip = Self::tooltip(expiry);
+                let tooltip = Self::tooltip(&expiry);
                 (minutes_left, "running", tooltip)
             }
-            Self::Paused { time_left, .. } => {
+            TimerKind::Paused { time_left, .. } => {
                 let minutes_left = time_left.whole_minutes() + 1;
                 let tooltip = "Timer paused".into();
                 (minutes_left, "paused", tooltip)
@@ -106,67 +115,75 @@ impl Timer {
 
 impl World for Timer {
     fn cancel(&mut self) -> Result<(), WorldError> {
-        match self {
-            Self::Idle => {}
+        match self.kind {
+            TimerKind::Idle => {}
             _ => send_notification("Timer canceled".into()),
         };
-        *self = Self::Idle;
+        self.kind = TimerKind::Idle;
         Ok(())
     }
 
     fn start(&mut self, minutes: u32, command: Option<String>) -> Result<(), WorldError> {
-        match self {
-            Self::Idle => {
+        match self.kind {
+            TimerKind::Idle => {
                 let expiry = OffsetDateTime::now_local().unwrap()
                     + Duration::minutes(minutes.into())
                     - Duration::MILLISECOND;
                 send_notification(Self::tooltip(&expiry));
-                *self = Self::Running { expiry, command };
+                self.kind = TimerKind::Running { expiry, command };
                 Ok(())
             }
-            Self::Paused { .. } | Self::Running { .. } => Err(WorldError::TimerAlreadyExisting),
+            TimerKind::Paused { .. } | TimerKind::Running { .. } => {
+                Err(WorldError::TimerAlreadyExisting)
+            }
         }
     }
 
     fn increase(&mut self, seconds: i64) -> Result<(), WorldError> {
-        match self {
-            Self::Running { expiry, .. } => {
+        match self.kind {
+            TimerKind::Running { ref mut expiry, .. } => {
                 *expiry += Duration::seconds(seconds);
-                send_notification(Self::tooltip(expiry));
+                send_notification(Self::tooltip(&expiry));
                 Ok(())
             }
-            Self::Paused {
-                time_left,
+            TimerKind::Paused {
+                ref mut time_left,
                 command: _,
             } => {
                 *time_left += Duration::seconds(seconds);
                 Ok(())
             }
-            Self::Idle => Err(WorldError::NoTimerExisting),
+            TimerKind::Idle => Err(WorldError::NoTimerExisting),
         }
     }
 
     fn togglepause(&mut self) -> Result<(), WorldError> {
-        match self {
-            Self::Running { expiry, command } => {
-                let time_left = *expiry - OffsetDateTime::now_local().unwrap();
+        match self.kind {
+            TimerKind::Running {
+                expiry,
+                ref mut command,
+            } => {
+                let time_left = expiry - OffsetDateTime::now_local().unwrap();
                 send_notification("Timer paused".into());
-                *self = Self::Paused {
+                self.kind = TimerKind::Paused {
                     time_left,
                     command: command.take(),
                 };
                 Ok(())
             }
-            Self::Paused { time_left, command } => {
-                let expiry = OffsetDateTime::now_local().unwrap() + *time_left;
+            TimerKind::Paused {
+                time_left,
+                ref mut command,
+            } => {
+                let expiry = OffsetDateTime::now_local().unwrap() + time_left;
                 send_notification(Self::tooltip(&expiry));
-                *self = Self::Running {
+                self.kind = TimerKind::Running {
                     expiry,
                     command: command.take(),
                 };
                 Ok(())
             }
-            Self::Idle => Err(WorldError::NoTimerExisting),
+            TimerKind::Idle => Err(WorldError::NoTimerExisting),
         }
     }
 }
@@ -226,7 +243,10 @@ impl ServerState {
 
 fn run_serve() {
     let state = Arc::new(Mutex::new(ServerState {
-        timer: Timer::Idle,
+        timer: Timer {
+            cycles: 0,
+            kind: TimerKind::Idle,
+        },
         subs: Vec::new(),
     }));
 
