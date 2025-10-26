@@ -123,7 +123,9 @@ impl Timer {
 impl World for Timer {
     fn cancel(&mut self) -> Result<(), WorldError> {
         match self.kind {
-            TimerKind::Idle => {}
+            TimerKind::Idle => {
+                self.cycles = 0;
+            }
             _ => send_notification("Timer canceled".into()),
         };
         self.kind = TimerKind::Idle;
