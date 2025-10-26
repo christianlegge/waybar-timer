@@ -103,7 +103,14 @@ impl Timer {
                 (minutes_left, "paused", tooltip)
             }
         };
-        format!("{{\"text\": \"{text}\", \"alt\": \"{alt}\", \"tooltip\": \"{tooltip}\", \"class\": \"timer\"}}")
+
+        let focus_break = if self.cycles % 2 == 0 {
+            "-focus"
+        } else {
+            "-break"
+        };
+
+        format!("{{\"text\": \"{text}\", \"alt\": \"{alt}{focus_break}\", \"tooltip\": \"{tooltip}\", \"class\": \"timer\"}}")
     }
 
     fn tooltip(expiry: &OffsetDateTime) -> String {
