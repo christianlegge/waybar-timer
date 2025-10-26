@@ -44,6 +44,7 @@ trait World {
     fn start(&mut self, command: Option<String>) -> Result<(), WorldError>;
     fn increase(&mut self, seconds: i64) -> Result<(), WorldError>;
     fn togglepause(&mut self) -> Result<(), WorldError>;
+    fn skip(&mut self) -> Result<(), WorldError>;
 }
 
 #[derive(Debug)]
@@ -168,6 +169,22 @@ impl World for Timer {
         }
     }
 
+    fn skip(&mut self) -> Result<(), WorldError> {
+        match self.kind {
+            TimerKind::Idle => Err(WorldError::NoTimerExisting),
+            TimerKind::Running { ref mut expiry, .. } => {
+                *expiry = OffsetDateTime::now_local().unwrap();
+                Ok(())
+            }
+            TimerKind::Paused {
+                ref mut time_left, ..
+            } => {
+                *time_left = Duration::ZERO;
+                self.togglepause()
+            }
+        }
+    }
+
     fn togglepause(&mut self) -> Result<(), WorldError> {
         match self.kind {
             TimerKind::Running {
@@ -207,13 +224,20 @@ enum Args {
     /// Keep reading the latest status of the timer (should be called by waybar)
     Hook,
     /// Start a new timer
-    New { command: Option<String> },
+    New {
+        command: Option<String>,
+    },
     /// Increase the current timer
-    Increase { seconds: u32 },
+    Increase {
+        seconds: u32,
+    },
     /// Decrease the current timer
-    Decrease { seconds: u32 },
+    Decrease {
+        seconds: u32,
+    },
     /// Pause or resume the current timer
     Togglepause,
+    Skip,
     /// Cancel the current timer
     Cancel,
 }
@@ -347,6 +371,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         Args::Togglepause => {
             let stream = UnixStream::connect_addr(&socket_addr_commands)?;
             WorldRPCClient::call_with(&stream, &stream).togglepause()??;
+            stream.shutdown(std::net::Shutdown::Both)?;
+            Ok(())
+        }
+        Args::Skip => {
+            let stream = UnixStream::connect_addr(&socket_addr_commands)?;
+            WorldRPCClient::call_with(&stream, &stream).skip()??;
             stream.shutdown(std::net::Shutdown::Both)?;
             Ok(())
         }
