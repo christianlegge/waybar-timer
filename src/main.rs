@@ -144,9 +144,7 @@ impl World for Timer {
                 self.kind = TimerKind::Running { expiry, command };
                 Ok(())
             }
-            TimerKind::Paused { .. } | TimerKind::Running { .. } => {
-                Err(WorldError::TimerAlreadyExisting)
-            }
+            TimerKind::Paused { .. } | TimerKind::Running { .. } => self.togglepause(),
         }
     }
 
