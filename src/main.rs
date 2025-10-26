@@ -88,29 +88,29 @@ impl Timer {
             }
         }
 
+        let focus_break = if self.cycles % 2 == 0 {
+            "focus"
+        } else {
+            "break"
+        };
+
         // print new output to stdout (for waybar)
-        let (text, alt, tooltip) = match self.kind {
-            TimerKind::Idle { .. } => (0, "standby", "No timer set".into()),
+        let (text, alt, tooltip, css_class) = match self.kind {
+            TimerKind::Idle { .. } => (0, "standby", "No timer set".into(), "idle"),
             TimerKind::Running { expiry, .. } => {
                 let time_left = expiry - now;
                 let minutes_left = time_left.whole_minutes() + 1;
                 let tooltip = Self::tooltip(&expiry);
-                (minutes_left, "running", tooltip)
+                (minutes_left, "running", tooltip, focus_break)
             }
             TimerKind::Paused { time_left, .. } => {
                 let minutes_left = time_left.whole_minutes() + 1;
                 let tooltip = "Timer paused".into();
-                (minutes_left, "paused", tooltip)
+                (minutes_left, "paused", tooltip, focus_break)
             }
         };
 
-        let focus_break = if self.cycles % 2 == 0 {
-            "-focus"
-        } else {
-            "-break"
-        };
-
-        format!("{{\"text\": \"{text}\", \"alt\": \"{alt}{focus_break}\", \"tooltip\": \"{tooltip}\", \"class\": \"timer\"}}")
+        format!("{{\"text\": \"{text}\", \"alt\": \"{alt}-{focus_break}\", \"tooltip\": \"{tooltip}\", \"class\": \"{css_class}\"}}")
     }
 
     fn tooltip(expiry: &OffsetDateTime) -> String {
