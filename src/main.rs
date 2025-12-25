@@ -97,7 +97,7 @@ impl Timer {
 
         // print new output to stdout (for waybar)
         let (text, alt, tooltip, css_class) = match self.kind {
-            TimerKind::Idle { .. } => (
+            TimerKind::Idle => (
                 0,
                 "standby",
                 format!("Pomodoro cycles: {0}", self.cycles),
@@ -160,7 +160,7 @@ impl World for Timer {
         match self.kind {
             TimerKind::Running { ref mut expiry, .. } => {
                 *expiry += Duration::seconds(seconds);
-                send_notification(Self::tooltip(&expiry));
+                send_notification(Self::tooltip(expiry));
                 Ok(())
             }
             TimerKind::Paused {
