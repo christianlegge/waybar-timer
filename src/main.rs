@@ -72,27 +72,30 @@ impl Timer {
         let now = OffsetDateTime::now_local().unwrap();
 
         // check if timer expired
-        if let TimerKind::Running { expiry, command } = &self.kind {
+        if let TimerKind::Running { expiry, command: _ } = &self.kind {
             let time_left = *expiry - now;
             if time_left <= Duration::ZERO {
                 // timer has expired, send notification and set timer to idle
-                if let Some(command) = command {
-                    let _ = std::process::Command::new("bash")
-                        .arg("-c")
-                        .arg(command)
+                let message = match self.cycles % 8 {
+                    0 | 2 | 4 => "Time for a short break.",
+                    6 => "Time for a long break.",
+                    _ => "Time to focus.",
+                };
+                let _ = std::process::Command::new("notify-send")
+                    .arg("Session finished")
+                    .arg(message)
+                    .output();
+                let alarm_sound = if self.cycles % 2 == 0 {
+                    "ring_fade.wav"
+                } else {
+                    "bottles_fade.wav"
+                };
+                std::thread::spawn(move || {
+                    let _ = std::process::Command::new("paplay")
+                        .arg(format!("/home/christian/Music/{alarm_sound}"))
+                        .arg("--volume=50000")
                         .output();
-                    let alarm_sound = if self.cycles % 2 == 0 {
-                        "ring_fade.wav"
-                    } else {
-                        "bottles_fade.wav"
-                    };
-                    std::thread::spawn(move || {
-                        let _ = std::process::Command::new("paplay")
-                            .arg(format!("/home/christian/Music/{alarm_sound}"))
-                            .arg("--volume=50000")
-                            .output();
-                    });
-                }
+                });
                 *self = Timer {
                     kind: TimerKind::Idle,
                     cycles: self.cycles + 1,
