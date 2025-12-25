@@ -81,6 +81,17 @@ impl Timer {
                         .arg("-c")
                         .arg(command)
                         .output();
+                    let alarm_sound = if self.cycles % 2 == 0 {
+                        "ring_fade.wav"
+                    } else {
+                        "bottles_fade.wav"
+                    };
+                    std::thread::spawn(move || {
+                        let _ = std::process::Command::new("paplay")
+                            .arg(format!("/home/christian/Music/{alarm_sound}"))
+                            .arg("--volume=50000")
+                            .output();
+                    });
                 }
                 *self = Timer {
                     kind: TimerKind::Idle,
